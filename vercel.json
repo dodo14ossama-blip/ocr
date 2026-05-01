@@ -4,7 +4,7 @@
       "src": "api.py",
       "use": "@vercel/python",
       "config": {
-        "requirementsPath": "requirements.txt"
+        "runtime": "python3.9"
       }
     }
   ],
