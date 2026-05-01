@@ -8,7 +8,6 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# ==================== HTML UI ====================
 HTML_PAGE = """
 <!DOCTYPE html>
 <html>
@@ -47,8 +46,6 @@ HTML_PAGE = """
 </html>
 """
 
-# ==================== وظائف استخراج البيانات ====================
-
 def extract_text_from_file(content, filename):
     ext = filename.split('.')[-1].lower()
     text = ""
@@ -69,9 +66,12 @@ def extract_text_from_file(content, filename):
         
         elif ext in ['xlsx', 'xls']:
             try:
-                import pandas as pd
-                df = pd.read_excel(io.BytesIO(content))
-                text = df.to_string()
+                import openpyxl
+                from io import BytesIO
+                wb = openpyxl.load_workbook(BytesIO(content))
+                sheet = wb.active
+                for row in sheet.iter_rows(values_only=True):
+                    text += " | ".join([str(cell) for cell in row if cell]) + "\n"
             except:
                 text = "Excel extraction failed"
         
@@ -102,51 +102,32 @@ def extract_text_from_file(content, filename):
 
 def extract_medical_data(text):
     data = {
-        'age': None,
-        'glucose': None,
-        'systolic_bp': None,
-        'diastolic_bp': None,
-        'ldl': None,
-        'genetic_risk_score': None,
-        'gender': None,
-        'genetic_disease': None
+        'age': None, 'glucose': None, 'systolic_bp': None, 'diastolic_bp': None,
+        'ldl': None, 'genetic_risk_score': None, 'gender': None, 'genetic_disease': None
     }
     
-    if not text:
-        return data
+    if not text: return data
     
-    # Age
     m = re.search(r'(?:age|عمر|Age)[\s:]*(\d+)', text, re.IGNORECASE)
     if m: data['age'] = int(m.group(1))
     
-    # Glucose
     m = re.search(r'(?:glucose|سكر|Glucose|blood sugar)[\s:]*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
     if m: data['glucose'] = float(m.group(1))
     
-    # Blood Pressure (145/90)
     m = re.search(r'(?:blood pressure|الضغط)[\s:]*(\d+)[\s/-]+(\d+)', text, re.IGNORECASE)
     if m:
         data['systolic_bp'] = int(m.group(1))
         data['diastolic_bp'] = int(m.group(2))
-    else:
-        m = re.search(r'(?:systolic|الضغط الانقباضي)[\s:]*(\d+)', text, re.IGNORECASE)
-        if m: data['systolic_bp'] = int(m.group(1))
-        m = re.search(r'(?:diastolic|الضغط الانبساطي)[\s:]*(\d+)', text, re.IGNORECASE)
-        if m: data['diastolic_bp'] = int(m.group(1))
     
-    # LDL
     m = re.search(r'(?:ldl|LDL)[\s:]*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
     if m: data['ldl'] = float(m.group(1))
     
-    # Genetic Risk
     m = re.search(r'(?:genetic risk|الخطر الوراثي)[\s:]*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
     if m: data['genetic_risk_score'] = float(m.group(1))
     
-    # Gender
     if re.search(r'male|ذكر|Male', text, re.IGNORECASE): data['gender'] = 'Male'
     elif re.search(r'female|انثى|Female', text, re.IGNORECASE): data['gender'] = 'Female'
     
-    # Disease
     m = re.search(r'(?:genetic disease|مرض وراثي|Diagnosis)[\s:]*([A-Za-z\s]+)', text, re.IGNORECASE)
     if m: data['genetic_disease'] = m.group(1).strip()
     
@@ -171,8 +152,6 @@ def calculate_risk(data):
     
     return {'score': round(risk, 3), 'percentage': f"{risk*100:.1f}%", 'category': cat, 'recommendations': rec}
 
-# ==================== API Endpoints ====================
-
 @app.route('/', methods=['GET'])
 def home():
     return HTML_PAGE
@@ -196,12 +175,7 @@ def extract():
         data = extract_medical_data(text)
         data['person_id'] = f"P{random.randint(100000, 999999)}"
         
-        return jsonify({
-            'success': True,
-            'filename': file.filename,
-            'extracted_data': data,
-            'text_preview': text[:300] + ('...' if len(text) > 300 else '')
-        })
+        return jsonify({'success': True, 'filename': file.filename, 'extracted_data': data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -221,17 +195,9 @@ def predict():
         risk = calculate_risk(data)
         data['person_id'] = f"P{random.randint(100000, 999999)}"
         
-        return jsonify({
-            'success': True,
-            'filename': file.filename,
-            'extracted_data': data,
-            'risk_assessment': risk
-        })
+        return jsonify({'success': True, 'filename': file.filename, 'extracted_data': data, 'risk_assessment': risk})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
-# Vercel handler
-app.debug = False
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
